@@ -207,17 +207,20 @@ function renderMatch() {
         <div class="mtitle"><strong>${roundLabel(game.round.length)}</strong><span>${cur} / ${total}${bye}</span></div>
         <div class="bar"><i style="width:${((cur - 1) / total) * 100}%"></i></div>
       </div>
+      <p class="hint">사진을 <b>두 번 톡톡</b> 누르면 선택돼요</p>
+      <div class="duel">
       <button class="pick pa" data-pick="a" aria-label="${esc(a.name)} 선택">
         <img src="${bestSrc(a)}" data-full="${esc(a.id)}" alt=""><span class="nm">${esc(a.name)}</span>
       </button>
+      <button class="pick pb" data-pick="b" aria-label="${esc(b.name)} 선택">
+        <img src="${bestSrc(b)}" data-full="${esc(b.id)}" alt=""><span class="nm">${esc(b.name)}</span>
+      </button>
+      </div>
       <div class="mid">
         <button class="btn ghost sm" data-undo ${game.history.length ? '' : 'disabled'}>↶ 되돌리기</button>
         <span class="vs">VS</span>
         <button class="btn draw sm" data-pick="draw">🤝 무승부</button>
       </div>
-      <button class="pick pb" data-pick="b" aria-label="${esc(b.name)} 선택">
-        <img src="${bestSrc(b)}" data-full="${esc(b.id)}" alt=""><span class="nm">${esc(b.name)}</span>
-      </button>
       <button class="linkbtn quit" data-quit>그만하기</button>
     </section>`;
   upgradeImages();
@@ -459,6 +462,7 @@ document.getElementById('tabs').addEventListener('click', e => {
   if (b) setTab(b.dataset.tab);
 });
 
+let lastTap = { pick: null, at: 0 };
 $app.addEventListener('click', async e => {
   const t = e.target.closest('button, [data-go]');
   if (!t || busy) return;
@@ -473,6 +477,16 @@ $app.addEventListener('click', async e => {
   }
   if ('discard' in d) { if (confirm('하던 월드컵을 버릴까요?')) { clearProgress(); render(); } return; }
   if (d.pick) {
+    // 사진은 두 번 톡톡 눌러야 선택 (스크롤하다 잘못 눌리는 것 방지). 무승부 버튼은 한 번.
+    if (d.pick !== 'draw') {
+      const now = Date.now();
+      if (lastTap.pick !== d.pick || now - lastTap.at > 450) {
+        lastTap = { pick: d.pick, at: now };
+        $app.querySelectorAll('.pick').forEach(p => p.classList.toggle('armed', p === t));
+        return;
+      }
+      lastTap = { pick: null, at: 0 };
+    }
     busy = true;
     const el = d.pick === 'draw' ? null : t;
     if (el) {
