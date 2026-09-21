@@ -39,5 +39,25 @@ service cloud.firestore {
         && request.resource.data.champions is list
         && request.resource.data.champions.size() <= 2;
     }
+
+    // 전체 순위 초기화: 관리자 비밀번호 확인용 기록. 아무도 읽을 수 없음
+    match /adminlog/{id} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['pw', 'at', 'uid'])
+        && request.resource.data.pw == '여기에_관리자_비밀번호'  // 콘솔에 게시할 때만 실제 비밀번호로 바꿈 (공개 저장소라 여기엔 안 적음)
+        && request.resource.data.at == request.time
+        && request.resource.data.uid == request.auth.uid;
+    }
+
+    // 순위 초기화 시각. 비밀번호 기록(adminlog)을 같은 batch 안에서 새로 만들 때만 바꿀 수 있음
+    match /meta/ranking {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['resetAt', 'logId'])
+        && request.resource.data.resetAt == request.time
+        && request.resource.data.logId is string
+        && !exists(/databases/$(database)/documents/adminlog/$(request.resource.data.logId))
+        && existsAfter(/databases/$(database)/documents/adminlog/$(request.resource.data.logId));
+    }
   }
 }

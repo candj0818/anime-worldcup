@@ -460,7 +460,8 @@ async function renderRank() {
     <section class="card rules">
       <h3>점수 계산</h3>
       <p class="muted">참여자마다 자기 TOP 10에 <b>1위 10점, 2위 9점 … 10위 1점</b>을 주고 모두 더해요. 점수가 같으면 우승 횟수, 그다음 승률 순으로 정해요. 둘 다 좋아는 반 승, 둘 다 싫어는 패로 쳐요.</p>
-    </section>`;
+    </section>
+    <p class="center"><button class="linkbtn" data-reset-rank>🔒 순위 초기화 (관리자)</button></p>`;
 }
 
 // ---------- 이벤트 ----------
@@ -517,6 +518,19 @@ $app.addEventListener('click', async e => {
   if ('again' in d) { game = null; return render(); }
   if ('reload' in d) { busy = true; try { await loadChars(); } finally { busy = false; } return renderUpload(); }
   if ('refreshRank' in d) { await loadChars(); return renderRank(); }
+  if ('resetRank' in d) {
+    const pw = prompt('관리자 비밀번호를 입력하세요');
+    if (pw === null) return;
+    if (!confirm('모두의 TOP 10을 0판부터 다시 시작할까요?\n(캐릭터와 사진은 그대로예요)')) return;
+    busy = true;
+    try {
+      await store.resetRanking(pw);
+      toast('전체 순위를 초기화했어요');
+    } catch (err) {
+      toast(/permission/i.test(err.code || err.message) ? '비밀번호가 틀렸어요' : '초기화 실패: ' + err.message, 4000);
+    } finally { busy = false; }
+    return renderRank();
+  }
   if ('fakeChars' in d || 'fakeResults' in d || 'fakeClear' in d) {
     busy = true;
     try { await testKit('fakeChars' in d ? 'chars' : 'fakeResults' in d ? 'results' : 'clear'); }

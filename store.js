@@ -53,9 +53,24 @@ async function firebaseStore(cfg) {
     async addResult(result) {
       await fs.addDoc(col('results'), { ...result, uid: user.uid, createdAt: fs.serverTimestamp() });
     },
+    // 순위 초기화 이후의 결과만 센다 (예전 기록은 지우지 않고 숨김)
     async listResults() {
-      const snap = await fs.getDocs(col('results'));
+      let resetAt = null;
+      try {
+        const meta = await fs.getDoc(fs.doc(db, 'meta', 'ranking'));
+        if (meta.exists()) resetAt = meta.data().resetAt;
+      } catch { /* 새 보안 규칙을 아직 게시 안 했으면 초기화 없이 전체를 센다 */ }
+      const q = resetAt ? fs.query(col('results'), fs.where('createdAt', '>', resetAt)) : col('results');
+      const snap = await fs.getDocs(q);
       return snap.docs.map(d => d.data());
+    },
+    // 비밀번호 확인은 보안 규칙이 한다(코드에는 비밀번호가 없음). 틀리면 permission-denied.
+    async resetRanking(pw) {
+      const log = fs.doc(col('adminlog'));
+      const batch = fs.writeBatch(db);
+      batch.set(log, { pw, at: fs.serverTimestamp(), uid: user.uid });
+      batch.set(fs.doc(db, 'meta', 'ranking'), { resetAt: fs.serverTimestamp(), logId: log.id });
+      await batch.commit();
     }
   };
 }
@@ -93,6 +108,7 @@ function localStore() {
     async deleteCharacter(id) { dropFull([id]); write(CHARS, read(CHARS).filter(c => c.id !== id)); },
     async addResult(result) { const r = read(RESULTS); r.push({ ...result, uid }); write(RESULTS, r); },
     async listResults() { return read(RESULTS); },
+    async resetRanking() { write(RESULTS, []); },
 
     // 아래는 체험 모드 테스트 도구 전용
     async replaceCharacters(list) {
