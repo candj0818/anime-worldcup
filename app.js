@@ -1,6 +1,6 @@
 import { createStore } from './store.js';
 import { prepareImage } from './images.js';
-import { shuffle, roundLabel, newGame, applyChoice, skipPair, canDropBoth, personalRanking, resultOf } from './engine.js';
+import { shuffle, roundLabel, newGame, applyChoice, skipPair, canDropBoth, tiebreakInfo, personalRanking, resultOf } from './engine.js';
 
 const MAX_CHARS = 140;
 const PROGRESS_KEY = 'wc_progress_v1';
@@ -177,6 +177,7 @@ function renderPlay() {
         <li>더 좋은 캐릭터 사진을 <b>두 번 톡톡</b> 누르세요.</li>
         <li><b>💕 둘 다 좋아</b>를 누르면 둘 다 다음 라운드로 올라가요. 결승이면 <b>공동 우승</b>이에요.</li>
         <li><b>👎 둘 다 싫어</b>를 누르면 둘 다 탈락해요. (아무도 안 남게 되는 대결에선 못 눌러요)</li>
+        <li>끝났을 때 TOP 10 안에 동점이 있으면 <b>동점 결정전</b>으로 10위까지 정확히 정해요.</li>
         <li>인원이 홀수가 되면 한 명은 부전승으로 올라가요.</li>
         <li>중간에 나가도 이 기기에서 이어서 할 수 있어요.</li>
       </ul>
@@ -201,11 +202,18 @@ function renderMatch() {
   const total = Math.floor(game.round.length / 2);
   const cur = game.i / 2 + 1;
   const bye = game.round.length % 2 === 1 ? ' · 1명 부전승' : '';
+  const tb = tiebreakInfo(game);
+  const title = tb ? '동점 결정전' : roundLabel(game.round.length);
+  const sub = tb ? `공동 ${tb.from}위 ${tb.size}명 · ${tb.place}위 가리는 중` : `${cur} / ${total}${bye}`;
+  const buttons = tb
+    ? `<p class="hint">${tb.from}~${tb.to}위 동점 · 더 좋은 쪽을 골라주세요</p>`
+    : `<button class="btn draw sm" data-pick="draw">💕 둘 다 좋아</button>
+        <button class="btn dislike sm" data-pick="none" ${canDropBoth(game) ? '' : 'disabled'}>👎 둘 다 싫어</button>`;
   $app.innerHTML = `
     <section class="match">
       <div class="mhead">
-        <div class="mtitle"><strong>${roundLabel(game.round.length)}</strong><span>${cur} / ${total}${bye}</span></div>
-        <div class="bar"><i style="width:${((cur - 1) / total) * 100}%"></i></div>
+        <div class="mtitle"><strong>${title}</strong><span>${sub}</span></div>
+        <div class="bar"><i style="width:${tb ? 100 : ((cur - 1) / total) * 100}%"></i></div>
       </div>
       <p class="hint">사진을 <b>두 번 톡톡</b> 누르면 선택돼요</p>
       <div class="duel">
@@ -218,8 +226,7 @@ function renderMatch() {
       </div>
       <div class="mid">
         <button class="btn ghost sm undo" data-undo ${game.history.length ? '' : 'disabled'} aria-label="되돌리기">↶</button>
-        <button class="btn draw sm" data-pick="draw">💕 둘 다 좋아</button>
-        <button class="btn dislike sm" data-pick="none" ${canDropBoth(game) ? '' : 'disabled'}>👎 둘 다 싫어</button>
+        ${buttons}
       </div>
       <button class="linkbtn quit" data-quit>그만하기</button>
     </section>`;
@@ -422,7 +429,7 @@ async function renderRank() {
     return agg.get(id);
   };
   for (const r of results) {
-    (r.top10 || []).forEach((id, i) => { get(id).pts += 10 - i; });
+    (r.top10 || []).forEach((id, i) => { get(id).pts += r.top10pts?.[i] ?? 10 - i; });
     (r.champions || []).forEach(id => { get(id).champ++; });
     for (const [id, s] of Object.entries(r.stats || {})) {
       const a = get(id);
