@@ -211,3 +211,15 @@ img[data-zoom] { cursor: zoom-in; }
   border-radius: 50%; border: 0; background: rgba(255, 255, 255, .15); color: #fff; font-size: 18px;
 }
 @keyframes zoom-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* 누적 순위 변동 */
+.mv { font-style: normal; font-size: 11px; font-weight: 800; margin-left: 4px; }
+.mv.up { color: #3ecf8e; }
+.mv.down { color: #ff6b6b; }
+.mv.new { color: var(--gold); }
+.mv.same { color: var(--muted); }
+.player .cumul h2 { display: none; }
+.player .cumul > .muted { margin-top: 8px; }
+.player h3.sub { font-size: 14px; margin: 12px 0 6px; color: var(--muted); }
+.player .player { background: var(--bg); }
+.player .player .rrow { background: var(--panel2); }

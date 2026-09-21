@@ -13,6 +13,7 @@ let tab = 'play';
 let game = null;      // 진행 중이거나 막 끝난 월드컵
 let pending = [];     // 등록 대기 중인 사진 [{img, name}]
 let busy = false;     // 연타 방지
+let lastSave = null;  // 방금 끝난 판의 결과 저장(누적 순위를 그 뒤에 불러옴)
 
 // ---------- 공통 ----------
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -131,7 +132,8 @@ function afterMove() {
   clearProgress();
   if (!game.saved) {
     game.saved = true;
-    store.addResult({ ...resultOf(game), nick: game.nick || '익명' }).catch(e => toast('결과 저장 실패: ' + e.message, 4000));
+    lastSave = store.addResult({ ...resultOf(game), nick: game.nick || '익명' })
+      .catch(e => toast('결과 저장 실패: ' + e.message, 4000));
   }
 }
 
@@ -287,11 +289,83 @@ function renderResult() {
         }).join('')}
       </ol>
     </section>
+    <section class="card" id="cumul">${game.nick ? `<p class="muted">${esc(game.nick)}님의 누적 순위 불러오는 중…</p>` : ''}</section>
     <div class="row stack">
       <button class="btn primary" data-go="rank">📊 모두의 순위 보기</button>
       <button class="btn ghost" data-again>다시 하기</button>
     </div>`;
   upgradeImages();
+  if (game.nick) fillCumulative(game.nick);
+}
+
+async function fillCumulative(nick) {
+  const g = game;
+  try {
+    await lastSave;
+    const results = await store.listResults();
+    const box = document.getElementById('cumul');
+    if (!box || game !== g) return;
+    const games = gamesOf(results, nick);
+    box.innerHTML = games.length ? cumulativeHtml(nick, games) : '';
+  } catch { /* 누적 순위는 부가 정보라 실패해도 조용히 넘어감 */ }
+}
+
+// ---------- 닉네임별 누적 순위 ----------
+// 같은 닉네임으로 한 판들을 모아서: 판마다 1위 10점 … 10위 1점을 더함.
+// 점수 같으면 TOP 10에 든 횟수, 그다음 최고 순위 순.
+const normNick = s => String(s || '익명').trim().toLowerCase();
+const tsOf = r => r.createdAt?.toMillis?.() ?? 0;
+
+function gamesOf(results, nick) {
+  return results
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => (r.top10 || []).length && normNick(r.nick) === normNick(nick))
+    .sort((x, y) => tsOf(x.r) - tsOf(y.r) || x.i - y.i)   // 오래된 판 → 최근 판
+    .map(({ r }) => r);
+}
+
+function cumulate(games) {
+  const m = new Map();
+  for (const r of games) {
+    r.top10.forEach((id, i) => {
+      const rank = r.top10pts ? 11 - r.top10pts[i] : i + 1;
+      if (!m.has(id)) m.set(id, { id, pts: 0, cnt: 0, best: 99, sum: 0, last: null });
+      const a = m.get(id);
+      a.pts += 11 - rank; a.cnt++; a.best = Math.min(a.best, rank); a.sum += rank;
+    });
+  }
+  const rows = [...m.values()].filter(a => charMap.has(a.id))
+    .sort((x, y) => y.pts - x.pts || y.cnt - x.cnt || x.best - y.best);
+  rows.forEach((r, i) => {
+    const p = rows[i - 1];
+    r.rank = p && p.pts === r.pts && p.cnt === r.cnt && p.best === r.best ? p.rank : i + 1;
+  });
+  return rows;
+}
+
+function cumulativeHtml(nick, games) {
+  const now = cumulate(games);
+  const before = games.length > 1 ? new Map(cumulate(games.slice(0, -1)).map(r => [r.id, r.rank])) : null;
+  const latest = games[games.length - 1];
+  const latestRank = new Map(latest.top10.map((id, i) => [id, latest.top10pts ? 11 - latest.top10pts[i] : i + 1]));
+  const move = r => {
+    if (!before) return '';
+    const b = before.get(r.id);
+    if (b === undefined || b > 10) return '<em class="mv new">NEW</em>';
+    if (b > r.rank) return `<em class="mv up">▲${b - r.rank}</em>`;
+    if (b < r.rank) return `<em class="mv down">▼${r.rank - b}</em>`;
+    return '<em class="mv same">–</em>';
+  };
+  return `
+    <h2>📈 ${esc(nick)}님의 누적 TOP 10</h2>
+    <p class="muted">${games.length}판 합산${before ? ' · 화살표는 직전 판까지의 누적 순위와 비교' : ''}</p>
+    <ol class="rlist">
+      ${now.slice(0, 10).map(r => {
+        const lr = latestRank.get(r.id);
+        return rankRow(r.rank, charMap.get(r.id), `${r.pts}점 ${move(r)}`,
+          `TOP10 ${r.cnt}/${games.length}판 · 최고 ${r.best}위 · 평균 ${(r.sum / r.cnt).toFixed(1)}위${lr ? ` · 이번 ${lr}위` : ''}`);
+      }).join('')}
+    </ol>`;
 }
 
 // ---------- 화면: 캐릭터 등록 ----------
@@ -459,8 +533,14 @@ async function renderRank() {
     r.rank = p && p.pts === r.pts && p.champ === r.champ ? p.rank : i + 1;
   });
 
-  const tsOf = r => r.createdAt?.toMillis?.() ?? 0;
-  const players = results.filter(r => (r.top10 || []).length).sort((x, y) => tsOf(y) - tsOf(x));
+  const byNick = new Map();
+  for (const r of results) {
+    if (!(r.top10 || []).length) continue;
+    const k = normNick(r.nick);
+    if (!byNick.has(k)) byNick.set(k, r.nick || '익명');
+  }
+  const players = [...byNick.values()].map(nick => ({ nick, games: gamesOf(results, nick) }))
+    .sort((x, y) => tsOf(y.games[y.games.length - 1]) - tsOf(x.games[x.games.length - 1]));
 
   $app.innerHTML = `
     <section class="card">
@@ -476,7 +556,7 @@ async function renderRank() {
     </section>
     <section class="card">
       <h2>참여자별 TOP 10</h2>
-      ${players.length ? `<p class="muted">이름을 누르면 그 사람의 TOP 10이 보여요.</p>
+      ${players.length ? `<p class="muted">이름을 누르면 그 사람의 누적 TOP 10과 판별 기록이 보여요.</p>
       <div class="players">${players.map(playerBlock).join('')}</div>`
         : `<p class="muted">아직 없어요.</p>`}
     </section>
@@ -487,7 +567,18 @@ async function renderRank() {
     <p class="center"><button class="linkbtn" data-reset-rank>🔒 순위 초기화 (관리자)</button></p>`;
 }
 
-function playerBlock(r) {
+function playerBlock({ nick, games }) {
+  const top = cumulate(games)[0];
+  return `
+    <details class="player">
+      <summary><b>${esc(nick)}</b><span>👑 ${esc(top ? charMap.get(top.id).name : '-')}</span><small>${games.length}판 참여 · 누적 1위</small></summary>
+      <div class="cumul">${cumulativeHtml(nick, games)}</div>
+      ${games.length > 1 ? `<h3 class="sub">판별 기록</h3>
+      <div class="players">${games.slice().reverse().map(gameBlock).join('')}</div>` : ''}
+    </details>`;
+}
+
+function gameBlock(r) {
   const champ = (r.champions || []).map(id => charMap.get(id)?.name).filter(Boolean).join(', ') || '(삭제된 캐릭터)';
   const ms = r.createdAt?.toMillis?.();
   const when = ms ? new Date(ms).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
