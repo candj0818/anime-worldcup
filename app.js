@@ -260,7 +260,7 @@ function rankRow(rank, c, main, sub) {
   return `
     <li class="rrow${rank <= 3 ? ' top' : ''}">
       <span class="rk">${medal}</span>
-      <img src="${c.img}" alt="">
+      <img src="${c.img}" alt="" data-zoom="${esc(c.id)}">
       <span class="rinfo"><b>${esc(c.name)}</b><small>${sub}</small></span>
       <span class="rmain">${main}</span>
     </li>`;
@@ -273,7 +273,7 @@ function renderResult() {
     <section class="card champ">
       <p class="crown">🏆 ${game.nick ? esc(game.nick) + '님의 ' : '나의 '}${champs.length > 1 ? '공동 우승' : '우승'}</p>
       <div class="champ-imgs n${Math.min(champs.length, 2)}">
-        ${champs.map(c => `<figure><img src="${bestSrc(c)}" data-full="${esc(c.id)}" alt=""><figcaption>${esc(c.name)}</figcaption></figure>`).join('')}
+        ${champs.map(c => `<figure><img src="${bestSrc(c)}" data-full="${esc(c.id)}" data-zoom="${esc(c.id)}" alt=""><figcaption>${esc(c.name)}</figcaption></figure>`).join('')}
       </div>
       <p class="muted">${game.size}명 참가 월드컵</p>
     </section>
@@ -317,7 +317,7 @@ function renderUpload() {
       <div class="grid">
         ${chars.map(c => `
           <figure class="tile" data-name="${esc(normName(c.name))}">
-            <img src="${c.img}" alt="" loading="lazy">
+            <img src="${c.img}" alt="" loading="lazy" data-zoom="${esc(c.id)}">
             <figcaption>${esc(c.name)}</figcaption>
             ${c.uid === store.uid ? `<button class="del" data-del="${esc(c.id)}" aria-label="삭제">✕</button>` : ''}
           </figure>`).join('')}
@@ -368,7 +368,7 @@ function renderPending() {
     <ul class="plist">
       ${pending.map((p, i) => `
         <li>
-          <img src="${p.img}" alt="">
+          <img src="${p.img}" alt="" data-zoom="">
           <input type="text" maxlength="40" placeholder="캐릭터 이름" data-pname="${i}" value="${esc(p.name)}">
           <button class="del static" data-prm="${i}" aria-label="빼기">✕</button>
         </li>`).join('')}
@@ -503,6 +503,27 @@ function playerBlock(r) {
       <ol class="rlist">${rows}</ol>
     </details>`;
 }
+
+// ---------- 사진 크게 보기 ----------
+// 썸네일을 누르면 화면 가득 고화질로. 아무 데나 누르면 닫힘.
+function openZoom(img) {
+  const id = img.dataset.zoom;
+  const c = id ? charMap.get(id) : null;
+  const box = document.createElement('div');
+  box.className = 'zoom';
+  box.innerHTML = `<img src="${img.getAttribute('src')}" alt="">${c ? `<p>${esc(c.name)}</p>` : ''}<button class="zoom-x" aria-label="닫기">✕</button>`;
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  box.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(box);
+  if (c) loadFull(id).then(src => { if (src && box.isConnected) box.querySelector('img').src = src; });
+}
+
+$app.addEventListener('click', e => {
+  const img = e.target.closest('img[data-zoom]');
+  if (img) openZoom(img);
+});
 
 // ---------- 이벤트 ----------
 document.getElementById('tabs').addEventListener('click', e => {
