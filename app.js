@@ -98,9 +98,18 @@ function clearProgress() {
 }
 
 // ---------- 토너먼트 ----------
+// 닉네임은 이 기기에 기억해 두고 다음 판에도 채워 둔다
+const NICK_KEY = 'wc_nick';
+function loadNick() { try { return localStorage.getItem(NICK_KEY) || ''; } catch { return ''; } }
+function saveNick(v) { try { localStorage.setItem(NICK_KEY, v); } catch { /* 무시 */ } }
+
 function startGame(size) {
+  const input = $app.querySelector('[data-nick]');
+  const nick = (input?.value || '').trim().slice(0, 20);
+  if (!nick) { toast('닉네임을 먼저 적어 주세요'); input?.focus(); return; }
+  saveNick(nick);
   const ids = shuffle(chars.map(c => c.id)).slice(0, size);
-  game = { ...newGame(ids), saved: false, history: [] };
+  game = { ...newGame(ids), nick, saved: false, history: [] };
   saveProgress();
   render();
 }
@@ -122,7 +131,7 @@ function afterMove() {
   clearProgress();
   if (!game.saved) {
     game.saved = true;
-    store.addResult(resultOf(game)).catch(e => toast('결과 저장 실패: ' + e.message, 4000));
+    store.addResult({ ...resultOf(game), nick: game.nick || '익명' }).catch(e => toast('결과 저장 실패: ' + e.message, 4000));
   }
 }
 
@@ -163,6 +172,11 @@ function renderPlay() {
           <button class="btn ghost" data-discard>버리기</button>
         </div>
       </section>` : ''}
+    <section class="card">
+      <h2>닉네임</h2>
+      <p class="muted">내 TOP 10이 이 이름으로 전체 순위 탭에 공개돼요.</p>
+      <input type="text" data-nick maxlength="20" placeholder="예: 벚꽃러버" value="${esc(loadNick())}">
+    </section>
     <section class="card">
       <h2>몇 강으로 할까요?</h2>
       <p class="muted">등록된 캐릭터 <strong>${n}명</strong> 중에서 무작위로 뽑아요.</p>
@@ -257,7 +271,7 @@ function renderResult() {
   const champs = game.champions.map(id => charMap.get(id)).filter(Boolean);
   $app.innerHTML = `
     <section class="card champ">
-      <p class="crown">🏆 ${champs.length > 1 ? '공동 우승' : '나의 우승'}</p>
+      <p class="crown">🏆 ${game.nick ? esc(game.nick) + '님의 ' : '나의 '}${champs.length > 1 ? '공동 우승' : '우승'}</p>
       <div class="champ-imgs n${Math.min(champs.length, 2)}">
         ${champs.map(c => `<figure><img src="${bestSrc(c)}" data-full="${esc(c.id)}" alt=""><figcaption>${esc(c.name)}</figcaption></figure>`).join('')}
       </div>
@@ -445,6 +459,9 @@ async function renderRank() {
     r.rank = p && p.pts === r.pts && p.champ === r.champ ? p.rank : i + 1;
   });
 
+  const tsOf = r => r.createdAt?.toMillis?.() ?? 0;
+  const players = results.filter(r => (r.top10 || []).length).sort((x, y) => tsOf(y) - tsOf(x));
+
   $app.innerHTML = `
     <section class="card">
       <div class="listhead">
@@ -457,11 +474,34 @@ async function renderRank() {
           `🏆 ${r.champ}회 · 승률 ${Math.round(rate(r) * 100)}%`)).join('')}
       </ol>` : `<p class="muted center">아직 끝까지 한 사람이 없어요. 첫 번째가 되어 보세요!</p>`}
     </section>
+    <section class="card">
+      <h2>참여자별 TOP 10</h2>
+      ${players.length ? `<p class="muted">이름을 누르면 그 사람의 TOP 10이 보여요.</p>
+      <div class="players">${players.map(playerBlock).join('')}</div>`
+        : `<p class="muted">아직 없어요.</p>`}
+    </section>
     <section class="card rules">
       <h3>점수 계산</h3>
       <p class="muted">참여자마다 자기 TOP 10에 <b>1위 10점, 2위 9점 … 10위 1점</b>을 주고 모두 더해요. 점수가 같으면 우승 횟수, 그다음 승률 순으로 정해요. 둘 다 좋아는 반 승, 둘 다 싫어는 패로 쳐요.</p>
     </section>
     <p class="center"><button class="linkbtn" data-reset-rank>🔒 순위 초기화 (관리자)</button></p>`;
+}
+
+function playerBlock(r) {
+  const champ = (r.champions || []).map(id => charMap.get(id)?.name).filter(Boolean).join(', ') || '(삭제된 캐릭터)';
+  const ms = r.createdAt?.toMillis?.();
+  const when = ms ? new Date(ms).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  const rows = r.top10.map((id, i) => {
+    const c = charMap.get(id);
+    if (!c) return '';
+    const rank = r.top10pts ? 11 - r.top10pts[i] : i + 1;
+    return rankRow(rank, c, '', '');
+  }).join('');
+  return `
+    <details class="player">
+      <summary><b>${esc(r.nick || '익명')}</b><span>🏆 ${esc(champ)}</span><small>${r.size}강${when ? " · " + when : ""}</small></summary>
+      <ol class="rlist">${rows}</ol>
+    </details>`;
 }
 
 // ---------- 이벤트 ----------

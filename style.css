@@ -181,3 +181,17 @@ input[type=text], .search {
   max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 12px; z-index: 20;
   background: #fff; color: #15121d; font-weight: 700; font-size: 14px; box-shadow: 0 6px 24px rgba(0, 0, 0, .4);
 }
+
+/* 참여자별 TOP 10 */
+.players { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.player { background: var(--panel2); border-radius: 12px; padding: 0 10px; }
+.player summary {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: baseline;
+  padding: 12px 0; cursor: pointer; list-style: none;
+}
+.player summary::-webkit-details-marker { display: none; }
+.player summary span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--gold); font-size: 14px; }
+.player summary small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+.player[open] summary { border-bottom: 1px solid var(--line); }
+.player .rlist { margin: 8px 0 10px; }
+.player .rrow { background: var(--bg); }
