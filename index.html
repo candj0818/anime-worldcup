@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15121d">
+<title>애니 캐릭터 이상형 월드컵</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>애니 이상형 월드컵</h1>
+  <span id="mode" class="mode" hidden></span>
+</header>
+<main id="app"><p class="loading">불러오는 중…</p></main>
+<nav class="tabs" id="tabs">
+  <button data-tab="play" class="on"><span>🏆</span>월드컵</button>
+  <button data-tab="upload"><span>➕</span>캐릭터 등록</button>
+  <button data-tab="rank"><span>📊</span>전체 순위</button>
+</nav>
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

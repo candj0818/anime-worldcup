@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 캐릭터: 누구나 보기, 익명 인증된 참여자는 등록, 본인이 올린 것만 삭제
+    match /characters/{id} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['name', 'img', 'uid', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.img is string
+        && request.resource.data.img.size() < 400000
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // 월드컵 결과: 누구나 보기, 추가만 가능(수정·삭제 불가)
+    match /results/{id} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.top10 is list
+        && request.resource.data.top10.size() <= 10
+        && request.resource.data.champions is list
+        && request.resource.data.champions.size() <= 2;
+    }
+  }
+}
