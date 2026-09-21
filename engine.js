@@ -25,10 +25,19 @@ export function newGame(ids) {
   };
 }
 
-// result: 'a' | 'b' | 'draw' — 현재 대결(round[i] vs round[i+1])의 결과
+// '둘 다 싫어'를 누르면 아무도 안 남는 경우(결승, 또는 이번 라운드 마지막 대결인데 아직 진출자 0명)엔 못 누름
+export function canDropBoth(g) {
+  return !(g.next.length === 0 && g.i + 2 >= g.round.length);
+}
+
+// result: 'a' | 'b' | 'draw'(둘 다 좋아) | 'none'(둘 다 싫어) — 현재 대결(round[i] vs round[i+1])의 결과
 export function applyChoice(g, result) {
   const a = g.round[g.i], b = g.round[g.i + 1];
-  if (result === 'draw') {
+  if (result === 'none') {
+    if (!canDropBoth(g)) return;
+    g.stats[a][2]++; g.stats[b][2]++;
+    g.elim[a] = g.roundNo; g.elim[b] = g.roundNo;
+  } else if (result === 'draw') {
     g.next.push(a, b);
     g.stats[a][1]++; g.stats[b][1]++;
   } else {

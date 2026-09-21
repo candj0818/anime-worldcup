@@ -67,6 +67,9 @@ main { max-width: 720px; margin: 0 auto; padding: 12px 16px 20px; }
 .btn.primary { background: linear-gradient(135deg, var(--accent), #ff7d6b); color: #fff; }
 .btn.ghost { background: var(--panel2); border-color: var(--line); }
 .btn.draw { background: var(--accent2); color: #fff; }
+.btn.dislike { background: var(--panel2); color: var(--text); border-color: var(--line); }
+.mid .btn:not(.undo) { flex: 1; }
+.mid .undo { font-size: 18px; padding: 0 14px; }
 .btn.sm { min-height: 40px; padding: 0 14px; font-size: 14px; }
 .btn.wide { width: 100%; margin-top: 10px; }
 .btn:disabled { opacity: .35; }

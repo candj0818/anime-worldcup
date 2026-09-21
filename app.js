@@ -1,6 +1,6 @@
 import { createStore } from './store.js';
 import { prepareImage } from './images.js';
-import { shuffle, roundLabel, newGame, applyChoice, skipPair, personalRanking, resultOf } from './engine.js';
+import { shuffle, roundLabel, newGame, applyChoice, skipPair, canDropBoth, personalRanking, resultOf } from './engine.js';
 
 const MAX_CHARS = 140;
 const PROGRESS_KEY = 'wc_progress_v1';
@@ -174,9 +174,9 @@ function renderPlay() {
     <section class="card rules">
       <h3>규칙</h3>
       <ul>
-        <li>더 좋은 캐릭터를 <b>탭</b>하세요.</li>
-        <li><b>🤝 무승부</b>를 누르면 둘 다 다음 라운드로 올라가요.</li>
-        <li>결승에서 무승부면 <b>공동 우승</b>이에요.</li>
+        <li>더 좋은 캐릭터 사진을 <b>두 번 톡톡</b> 누르세요.</li>
+        <li><b>💕 둘 다 좋아</b>를 누르면 둘 다 다음 라운드로 올라가요. 결승이면 <b>공동 우승</b>이에요.</li>
+        <li><b>👎 둘 다 싫어</b>를 누르면 둘 다 탈락해요. (아무도 안 남게 되는 대결에선 못 눌러요)</li>
         <li>인원이 홀수가 되면 한 명은 부전승으로 올라가요.</li>
         <li>중간에 나가도 이 기기에서 이어서 할 수 있어요.</li>
       </ul>
@@ -217,9 +217,9 @@ function renderMatch() {
       </button>
       </div>
       <div class="mid">
-        <button class="btn ghost sm" data-undo ${game.history.length ? '' : 'disabled'}>↶ 되돌리기</button>
-        <span class="vs">VS</span>
-        <button class="btn draw sm" data-pick="draw">🤝 무승부</button>
+        <button class="btn ghost sm undo" data-undo ${game.history.length ? '' : 'disabled'} aria-label="되돌리기">↶</button>
+        <button class="btn draw sm" data-pick="draw">💕 둘 다 좋아</button>
+        <button class="btn dislike sm" data-pick="none" ${canDropBoth(game) ? '' : 'disabled'}>👎 둘 다 싫어</button>
       </div>
       <button class="linkbtn quit" data-quit>그만하기</button>
     </section>`;
@@ -452,7 +452,7 @@ async function renderRank() {
     </section>
     <section class="card rules">
       <h3>점수 계산</h3>
-      <p class="muted">참여자마다 자기 TOP 10에 <b>1위 10점, 2위 9점 … 10위 1점</b>을 주고 모두 더해요. 점수가 같으면 우승 횟수, 그다음 승률 순으로 정해요. 무승부는 반 승으로 쳐요.</p>
+      <p class="muted">참여자마다 자기 TOP 10에 <b>1위 10점, 2위 9점 … 10위 1점</b>을 주고 모두 더해요. 점수가 같으면 우승 횟수, 그다음 승률 순으로 정해요. 둘 다 좋아는 반 승, 둘 다 싫어는 패로 쳐요.</p>
     </section>`;
 }
 
@@ -477,8 +477,8 @@ $app.addEventListener('click', async e => {
   }
   if ('discard' in d) { if (confirm('하던 월드컵을 버릴까요?')) { clearProgress(); render(); } return; }
   if (d.pick) {
-    // 사진은 두 번 톡톡 눌러야 선택 (스크롤하다 잘못 눌리는 것 방지). 무승부 버튼은 한 번.
-    if (d.pick !== 'draw') {
+    // 사진은 두 번 톡톡 눌러야 선택 (스크롤하다 잘못 눌리는 것 방지). 둘 다 좋아/싫어 버튼은 한 번.
+    if (d.pick === 'a' || d.pick === 'b') {
       const now = Date.now();
       if (lastTap.pick !== d.pick || now - lastTap.at > 450) {
         lastTap = { pick: d.pick, at: now };
@@ -488,10 +488,11 @@ $app.addEventListener('click', async e => {
       lastTap = { pick: null, at: 0 };
     }
     busy = true;
-    const el = d.pick === 'draw' ? null : t;
-    if (el) {
-      el.classList.add('chosen');
+    if (d.pick === 'a' || d.pick === 'b') {
+      t.classList.add('chosen');
       $app.querySelector(d.pick === 'a' ? '.pb' : '.pa')?.classList.add('lost');
+    } else if (d.pick === 'none') {
+      $app.querySelectorAll('.pick').forEach(p => p.classList.add('lost'));
     } else {
       $app.querySelectorAll('.pick').forEach(p => p.classList.add('chosen'));
     }
