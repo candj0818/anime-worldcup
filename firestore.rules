@@ -17,6 +17,18 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
+    // 고화질 사진: characters 와 같은 id. 문서 1MB 한도 안쪽
+    match /images/{id} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['data', 'uid'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 1000000
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null
+        && (resource == null || resource.data.uid == request.auth.uid);
+    }
+
     // 월드컵 결과: 누구나 보기, 추가만 가능(수정·삭제 불가)
     match /results/{id} {
       allow read: if true;

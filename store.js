@@ -5,6 +5,8 @@ import { firebaseConfig } from './firebase-config.js';
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 
 export async function createStore() {
+  // 주소 끝에 ?demo 를 붙이면 실제 데이터와 무관한 체험 모드로 열린다
+  if (new URLSearchParams(location.search).has('demo')) return localStore();
   if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
     return firebaseStore(firebaseConfig);
   }
@@ -29,14 +31,24 @@ async function firebaseStore(cfg) {
       const snap = await fs.getDocs(fs.query(col('characters'), fs.orderBy('createdAt', 'asc')));
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     },
-    async addCharacter({ name, img }) {
-      const ref = await fs.addDoc(col('characters'), {
-        name, img, uid: user.uid, createdAt: fs.serverTimestamp()
-      });
+    // 목록용 썸네일은 characters, 고화질은 images 에 같은 id로 한 번에 저장
+    async addCharacter({ name, img, full }) {
+      const ref = fs.doc(col('characters'));
+      const batch = fs.writeBatch(db);
+      batch.set(ref, { name, img, uid: user.uid, createdAt: fs.serverTimestamp() });
+      if (full) batch.set(fs.doc(db, 'images', ref.id), { data: full, uid: user.uid });
+      await batch.commit();
       return ref.id;
     },
+    async getFull(id) {
+      const snap = await fs.getDoc(fs.doc(db, 'images', id));
+      return snap.exists() ? snap.data().data : null;
+    },
     async deleteCharacter(id) {
-      await fs.deleteDoc(fs.doc(db, 'characters', id));
+      const batch = fs.writeBatch(db);
+      batch.delete(fs.doc(db, 'characters', id));
+      batch.delete(fs.doc(db, 'images', id));
+      await batch.commit();
     },
     async addResult(result) {
       await fs.addDoc(col('results'), { ...result, uid: user.uid, createdAt: fs.serverTimestamp() });
@@ -49,7 +61,7 @@ async function firebaseStore(cfg) {
 }
 
 function localStore() {
-  const CHARS = 'wc_local_chars', RESULTS = 'wc_local_results';
+  const CHARS = 'wc_local_chars', RESULTS = 'wc_local_results', FULL = 'wc_local_full_';
   const read = k => { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } };
   const write = (k, v) => {
     try { localStorage.setItem(k, JSON.stringify(v)); }
@@ -60,29 +72,36 @@ function localStore() {
     uid = localStorage.getItem('wc_uid');
     if (!uid) { uid = 'local-' + Math.random().toString(36).slice(2); localStorage.setItem('wc_uid', uid); }
   } catch { uid = 'local-anon'; }
+  const dropFull = ids => ids.forEach(id => { try { localStorage.removeItem(FULL + id); } catch { /* 무시 */ } });
 
   return {
     mode: 'local',
     uid,
     async listCharacters() { return read(CHARS); },
-    async addCharacter({ name, img }) {
+    async addCharacter({ name, img, full }) {
       const list = read(CHARS);
       const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      if (full) {
+        try { localStorage.setItem(FULL + id, full); }
+        catch { throw new Error('브라우저 저장 공간이 가득 찼어요 (체험 모드 한계)'); }
+      }
       list.push({ id, name, img, uid, createdAt: Date.now() });
       write(CHARS, list);
       return id;
     },
-    async deleteCharacter(id) { write(CHARS, read(CHARS).filter(c => c.id !== id)); },
+    async getFull(id) { try { return localStorage.getItem(FULL + id); } catch { return null; } },
+    async deleteCharacter(id) { dropFull([id]); write(CHARS, read(CHARS).filter(c => c.id !== id)); },
     async addResult(result) { const r = read(RESULTS); r.push({ ...result, uid }); write(RESULTS, r); },
     async listResults() { return read(RESULTS); },
 
     // 아래는 체험 모드 테스트 도구 전용
     async replaceCharacters(list) {
+      dropFull(read(CHARS).map(c => c.id));
       const t = Date.now();
       write(CHARS, list.map((c, i) => ({ id: 'f' + i.toString(36) + t.toString(36), ...c, uid, createdAt: t + i })));
       write(RESULTS, []);
     },
     async addResults(list) { write(RESULTS, [...read(RESULTS), ...list.map(r => ({ ...r, uid: 'fake' }))]); },
-    async clearAll() { write(CHARS, []); write(RESULTS, []); }
+    async clearAll() { dropFull(read(CHARS).map(c => c.id)); write(CHARS, []); write(RESULTS, []); }
   };
 }

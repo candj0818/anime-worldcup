@@ -1,4 +1,5 @@
 import { createStore } from './store.js';
+import { prepareImage } from './images.js';
 import { shuffle, roundLabel, newGame, applyChoice, skipPair, personalRanking, resultOf } from './engine.js';
 
 const MAX_CHARS = 140;
@@ -26,6 +27,43 @@ function toast(msg, ms = 2200) {
 }
 
 const normName = s => s.trim().replace(/\s+/g, ' ').toLowerCase();
+
+// 고화질 사진: 필요한 것만 받아오고, 휴대폰 메모리를 위해 최근 것 몇 장만 기억
+const FULL_CACHE_MAX = 12;
+const fullCache = new Map(); // id -> dataURL 또는 받는 중인 Promise
+
+function loadFull(id) {
+  const hit = fullCache.get(id);
+  if (hit !== undefined) {
+    fullCache.delete(id); fullCache.set(id, hit); // 최근 사용으로 갱신
+    return Promise.resolve(hit);
+  }
+  const p = store.getFull(id)
+    .then(src => {
+      const v = src || charMap.get(id)?.img || null;
+      fullCache.set(id, v);
+      while (fullCache.size > FULL_CACHE_MAX) fullCache.delete(fullCache.keys().next().value);
+      return v;
+    })
+    .catch(() => { fullCache.delete(id); return null; });
+  fullCache.set(id, p);
+  return p;
+}
+
+// 이미 받아둔 고화질이 있으면 바로, 없으면 썸네일을 먼저 보여준다
+function bestSrc(c) {
+  const v = fullCache.get(c.id);
+  return typeof v === 'string' ? v : c.img;
+}
+
+// data-full 이 붙은 사진을 고화질로 교체
+function upgradeImages() {
+  $app.querySelectorAll('img[data-full]').forEach(el => {
+    loadFull(el.dataset.full).then(src => {
+      if (src && el.isConnected && el.getAttribute('src') !== src) el.src = src;
+    });
+  });
+}
 
 async function loadChars() {
   chars = await store.listCharacters();
@@ -170,7 +208,7 @@ function renderMatch() {
         <div class="bar"><i style="width:${((cur - 1) / total) * 100}%"></i></div>
       </div>
       <button class="pick pa" data-pick="a" aria-label="${esc(a.name)} 선택">
-        <img src="${a.img}" alt=""><span class="nm">${esc(a.name)}</span>
+        <img src="${bestSrc(a)}" data-full="${esc(a.id)}" alt=""><span class="nm">${esc(a.name)}</span>
       </button>
       <div class="mid">
         <button class="btn ghost sm" data-undo ${game.history.length ? '' : 'disabled'}>↶ 되돌리기</button>
@@ -178,10 +216,13 @@ function renderMatch() {
         <button class="btn draw sm" data-pick="draw">🤝 무승부</button>
       </div>
       <button class="pick pb" data-pick="b" aria-label="${esc(b.name)} 선택">
-        <img src="${b.img}" alt=""><span class="nm">${esc(b.name)}</span>
+        <img src="${bestSrc(b)}" data-full="${esc(b.id)}" alt=""><span class="nm">${esc(b.name)}</span>
       </button>
       <button class="linkbtn quit" data-quit>그만하기</button>
     </section>`;
+  upgradeImages();
+  // 다음 대결 사진을 미리 받아두기
+  [game.round[game.i + 2], game.round[game.i + 3]].forEach(id => { if (charMap.has(id)) loadFull(id); });
 }
 
 function stageText(g, r) {
@@ -208,7 +249,7 @@ function renderResult() {
     <section class="card champ">
       <p class="crown">🏆 ${champs.length > 1 ? '공동 우승' : '나의 우승'}</p>
       <div class="champ-imgs n${Math.min(champs.length, 2)}">
-        ${champs.map(c => `<figure><img src="${c.img}" alt=""><figcaption>${esc(c.name)}</figcaption></figure>`).join('')}
+        ${champs.map(c => `<figure><img src="${bestSrc(c)}" data-full="${esc(c.id)}" alt=""><figcaption>${esc(c.name)}</figcaption></figure>`).join('')}
       </div>
       <p class="muted">${game.size}명 참가 월드컵</p>
     </section>
@@ -226,34 +267,10 @@ function renderResult() {
       <button class="btn primary" data-go="rank">📊 모두의 순위 보기</button>
       <button class="btn ghost" data-again>다시 하기</button>
     </div>`;
+  upgradeImages();
 }
 
 // ---------- 화면: 캐릭터 등록 ----------
-async function resizeImage(file, max = 540) {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i);
-      i.onerror = () => rej(new Error('이미지를 읽을 수 없어요'));
-      i.src = url;
-    });
-    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-    const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
-    const cv = document.createElement('canvas');
-    cv.width = w; cv.height = h;
-    const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(img, 0, 0, w, h);
-    let q = 0.82, data = cv.toDataURL('image/jpeg', q);
-    while (data.length > 200000 && q > 0.4) { q -= 0.1; data = cv.toDataURL('image/jpeg', q); }
-    return data;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
 function renderUpload() {
   const n = chars.length;
   const left = MAX_CHARS - n;
@@ -341,9 +358,9 @@ async function onFiles(files) {
   if (files.length > picked.length) toast(`자리가 ${room}명 남아서 ${picked.length}장만 받았어요`);
   for (const f of picked) {
     try {
-      const img = await resizeImage(f);
+      const { thumb, full } = await prepareImage(f);
       const name = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 40);
-      pending.push({ img, name: /^(img|image|dsc|kakaotalk|screenshot|photo)/i.test(name) ? '' : name });
+      pending.push({ img: thumb, full, name: /^(img|image|dsc|kakaotalk|screenshot|photo)/i.test(name) ? '' : name });
       renderPending();
     } catch (e) {
       toast(`${f.name}: ${e.message}`);
@@ -370,7 +387,7 @@ async function submitPending() {
     while (pending.length) {
       if (btn) btn.textContent = `올리는 중… (${ok + 1}/${ok + pending.length})`;
       const p = pending[0];
-      await store.addCharacter({ name: p.name.trim().replace(/\s+/g, ' '), img: p.img });
+      await store.addCharacter({ name: p.name.trim().replace(/\s+/g, ' '), img: p.img, full: p.full });
       pending.shift();
       ok++;
     }
