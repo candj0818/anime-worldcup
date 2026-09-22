@@ -223,3 +223,6 @@ img[data-zoom] { cursor: zoom-in; }
 .player h3.sub { font-size: 14px; margin: 12px 0 6px; color: var(--muted); }
 .player .player { background: var(--bg); }
 .player .player .rrow { background: var(--panel2); }
+
+/* 모두의 TOP 10 순위 이유 */
+.rinfo small .why { color: var(--accent); }

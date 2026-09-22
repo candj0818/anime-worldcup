@@ -513,11 +513,14 @@ async function renderRank() {
 
   const agg = new Map();
   const get = id => {
-    if (!agg.has(id)) agg.set(id, { id, pts: 0, champ: 0, w: 0, d: 0, l: 0 });
+    if (!agg.has(id)) agg.set(id, { id, pts: 0, champ: 0, w: 0, d: 0, l: 0, ranks: [] });
     return agg.get(id);
   };
   for (const r of results) {
-    (r.top10 || []).forEach((id, i) => { get(id).pts += r.top10pts?.[i] ?? 10 - i; });
+    (r.top10 || []).forEach((id, i) => {
+      const pts = r.top10pts?.[i] ?? 10 - i;
+      get(id).pts += pts; get(id).ranks.push(11 - pts);
+    });
     (r.champions || []).forEach(id => { get(id).champ++; });
     for (const [id, s] of Object.entries(r.stats || {})) {
       const a = get(id);
@@ -528,10 +531,33 @@ async function renderRank() {
   const rows = [...agg.values()].filter(a => charMap.has(a.id) && a.pts > 0)
     .sort((x, y) => y.pts - x.pts || y.champ - x.champ || rate(y) - rate(x));
   const top = rows.slice(0, 10);
+  const pct = a => Math.round(rate(a) * 100);
   top.forEach((r, i) => {
     const p = top[i - 1];
-    r.rank = p && p.pts === r.pts && p.champ === r.champ ? p.rank : i + 1;
+    r.rank = p && p.pts === r.pts && p.champ === r.champ && pct(p) === pct(r) ? p.rank : i + 1;
   });
+
+  // 순위 이유: 어떤 순위로 몇 번 뽑혔는지 + 바로 위/아래와 동점이면 무엇으로 갈렸는지
+  const why = (r, i) => {
+    const cnt = {};
+    r.ranks.forEach(k => { cnt[k] = (cnt[k] || 0) + 1; });
+    const dist = Object.keys(cnt).map(Number).sort((a, b) => a - b);
+    const distTxt = dist.slice(0, 4).map(k => `${k}위×${cnt[k]}`).join(' ') + (dist.length > 4 ? ' …' : '');
+    const lines = [
+      `${results.length}판 중 ${r.ranks.length}판 TOP10 · ${distTxt}`,
+      `🏆 우승 ${r.champ}회 · 승률 ${pct(r)}%`
+    ];
+    const tieNote = (o, above) => {
+      if (!o || o.pts !== r.pts) return null;
+      const who = esc(charMap.get(o.id).name);
+      if (o.champ !== r.champ) return `${who}와 같은 ${r.pts}점 → 우승 ${above ? '적어서 아래' : '많아서 위'}`;
+      if (pct(o) !== pct(r)) return `${who}와 점수·우승 같음 → 승률 ${above ? '낮아서 아래' : '높아서 위'}`;
+      return `${who}와 점수·우승·승률 모두 같아 공동 순위`;
+    };
+    const note = tieNote(top[i - 1], true) || tieNote(top[i + 1], false);
+    if (note) lines.push(`<span class="why">⚖️ ${note}</span>`);
+    return lines.join('<br>');
+  };
 
   const byNick = new Map();
   for (const r of results) {
@@ -550,8 +576,7 @@ async function renderRank() {
       </div>
       <p class="muted">지금까지 <b>${results.length}판</b> 완료</p>
       ${top.length ? `<ol class="rlist">
-        ${top.map(r => rankRow(r.rank, charMap.get(r.id), `${r.pts}점`,
-          `🏆 ${r.champ}회 · 승률 ${Math.round(rate(r) * 100)}%`)).join('')}
+        ${top.map((r, i) => rankRow(r.rank, charMap.get(r.id), `${r.pts}점`, why(r, i))).join('')}
       </ol>` : `<p class="muted center">아직 끝까지 한 사람이 없어요. 첫 번째가 되어 보세요!</p>`}
     </section>
     <section class="card">
@@ -562,7 +587,7 @@ async function renderRank() {
     </section>
     <section class="card rules">
       <h3>점수 계산</h3>
-      <p class="muted">참여자마다 자기 TOP 10에 <b>1위 10점, 2위 9점 … 10위 1점</b>을 주고 모두 더해요. 점수가 같으면 우승 횟수, 그다음 승률 순으로 정해요. 둘 다 좋아는 반 승, 둘 다 싫어는 패로 쳐요.</p>
+      <p class="muted">참여자마다 자기 TOP 10에 <b>1위 10점, 2위 9점 … 10위 1점</b>을 주고 모두 더해요. 점수가 같으면 우승 횟수, 그다음 승률 순으로 정해요. 각 캐릭터 아래 <b>몇 위로 몇 번 뽑혔는지</b>와 동점일 때 <b>무엇으로 갈렸는지</b>를 적어 뒀어요. 둘 다 좋아는 반 승, 둘 다 싫어는 패로 쳐요.</p>
     </section>
     <p class="center"><button class="linkbtn" data-reset-rank>🔒 순위 초기화 (관리자)</button></p>`;
 }
