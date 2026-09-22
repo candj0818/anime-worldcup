@@ -226,3 +226,6 @@ img[data-zoom] { cursor: zoom-in; }
 
 /* 모두의 TOP 10 순위 이유 */
 .rinfo small .why { color: var(--accent); }
+.rinfo small .gave { display: block; color: var(--text); opacity: .85; }
+.rinfo small .gave b { color: var(--gold); font-weight: 700; margin-right: 2px; }
+.rinfo small .ln { display: block; }

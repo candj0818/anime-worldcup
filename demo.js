@@ -57,7 +57,7 @@ export function simulateResults(chars, players = 30, drawRate = 0.12) {
       const pa = Math.exp(taste[a]) / (Math.exp(taste[a]) + Math.exp(taste[b]));
       applyChoice(g, Math.random() < pa ? 'a' : 'b');
     }
-    results.push(resultOf(g));
+    results.push({ ...resultOf(g), nick: ["벚꽃러버", "민수", "지영", "하루"][p % 4] });
   }
   return results;
 }
