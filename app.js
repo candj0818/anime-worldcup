@@ -520,7 +520,6 @@ async function renderRank() {
     (r.top10 || []).forEach((id, i) => {
       const pts = r.top10pts?.[i] ?? 10 - i;
       get(id).pts += pts; get(id).ranks.push(11 - pts);
-      (get(id).by ||= []).push({ rank: 11 - pts, nick: r.nick || '익명' });
     });
     (r.champions || []).forEach(id => { get(id).champ++; });
     for (const [id, s] of Object.entries(r.stats || {})) {
@@ -540,19 +539,12 @@ async function renderRank() {
 
   // 순위 이유: 어떤 순위로 몇 번 뽑혔는지 + 바로 위/아래와 동점이면 무엇으로 갈렸는지
   const why = (r, i) => {
-    // 순위별로 그 순위를 준 닉네임 (같은 닉네임이 여러 번이면 ×2)
-    const byRank = new Map();
-    (r.by || []).forEach(({ rank, nick }) => {
-      if (!byRank.has(rank)) byRank.set(rank, new Map());
-      const m = byRank.get(rank);
-      m.set(nick, (m.get(nick) || 0) + 1);
-    });
-    const who = [...byRank.keys()].sort((a, b) => a - b).map(k =>
-      `<span class="gave"><b>${k}위</b> ${[...byRank.get(k)].map(([n, c]) => esc(n) + (c > 1 ? `×${c}` : '')).join(', ')}</span>`
-    ).join('');
+    // 어떤 순위로 몇 번 뽑혔는지 (예: 1위×2 3위×1)
+    const cnt = {};
+    r.ranks.forEach(k => { cnt[k] = (cnt[k] || 0) + 1; });
+    const dist = Object.keys(cnt).map(Number).sort((x, y) => x - y).map(k => `${k}위×${cnt[k]}`).join(' ');
     const lines = [
-      `${results.length}판 중 ${r.ranks.length}판 TOP10`,
-      who,
+      `${results.length}판 중 ${r.ranks.length}판 TOP10 · ${dist}`,
       `🏆 우승 ${r.champ}회 · 승률 ${pct(r)}%`
     ];
     const tieNote = (o, above) => {
